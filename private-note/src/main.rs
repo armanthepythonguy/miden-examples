@@ -160,10 +160,10 @@ async fn main() -> Result<(), ClientError>{
     let note_script = NoteScript::compile(code, assembler).unwrap();
     let note_inputs = NoteInputs::new(vec![bob_account.id().prefix().as_felt(), bob_account.id().suffix()]).unwrap();
     let recipient = NoteRecipient::new(serial_num, note_script, note_inputs);
-    let tag = NoteTag::for_public_use_case(0, 0, NoteExecutionMode::Local).unwrap();
+    let tag = NoteTag::for_local_use_case(0, 0).unwrap();
     let metadata = NoteMetadata::new(
         alice_account.id(),
-        NoteType::Public,
+        NoteType::Private,
         tag,
         NoteExecutionHint::always(),
         Felt::new(0),

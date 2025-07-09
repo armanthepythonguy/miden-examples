@@ -11,19 +11,18 @@ begin
 
     # writing note inputs to memory
     push.0 exec.note::get_inputs drop drop
+    # => [prefix, suffix]
 
     push.0 mem_load
     # => [prefix, prefix, suffix]
 
-    debug.stack
-
     assert_eq
+    # => [suffix]
 
     push.1 mem_load
+    # => [suffix, suffix]
 
     assert_eq
-
-    exec.sys::truncate_stack
     # => []
 
     # Write the asset in note to memory address 0
