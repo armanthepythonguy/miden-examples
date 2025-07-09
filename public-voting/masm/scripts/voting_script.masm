@@ -1,0 +1,13 @@
+use.external_contract::voting_contract
+use.std::sys
+
+begin
+    push.2
+    # => [1]
+
+    call.voting_contract::vote
+    # => []
+
+    exec.sys::truncate_stack
+    # => []
+end
