@@ -1,0 +1,28 @@
+use.miden::note
+use.miden::contracts::wallets::basic->wallet
+use.miden::account
+use.std::sys
+
+
+begin
+
+    # => []
+
+    # Write the asset in note to memory address 0
+    push.0 exec.note::get_assets
+    # => [num_assets, dest_ptr]
+
+    push.2 assert_eq
+    # => [dest_ptr]
+
+    # Load asset from memory
+    mem_loadw
+    # => [ASSET]
+
+    # Call receive asset in wallet
+    exec.account::add_asset
+    # => []
+
+    
+
+end

@@ -1,0 +1,24 @@
+use.miden::account
+use.std::sys
+
+# => []
+export.get_balance
+
+    push.0
+    # => [0]
+
+    exec.account::get_item
+    # => [asset1_bal]
+
+    push.1
+    # => [1,asset1_bal]
+
+    exec.account::get_item
+    # => [asset2_bal, asset1_bal]
+
+    debug.stack
+
+    exec.sys::truncate_stack
+    # => []
+
+end
