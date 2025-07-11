@@ -1,7 +1,7 @@
 use.miden::note
-use.miden::contracts::wallets::basic->wallet
 use.miden::account
 use.std::sys
+use.external_contract::amm_account
 
 
 begin
@@ -12,17 +12,32 @@ begin
     push.0 exec.note::get_assets
     # => [num_assets, dest_ptr]
 
-    push.2 assert_eq
+    push.2 assert_eq dup
+    # => [dest_ptr, dest_ptr]
+
+    # Load asset from memory
+    mem_loadw
+    # => [ASSET, dest_ptr]
+
+    # Call receive asset in wallet
+    call.amm_account::receive_asset
     # => [dest_ptr]
+
+    push.4 add
+    # => [dest_ptr+4]
 
     # Load asset from memory
     mem_loadw
     # => [ASSET]
 
     # Call receive asset in wallet
-    exec.account::add_asset
+    call.amm_account::receive_asset
     # => []
 
+    push.1 call.amm_account::incr_nonce
+    # => []
     
+    exec.sys::truncate_stack
+    # => []
 
 end

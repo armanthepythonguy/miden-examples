@@ -1,4 +1,4 @@
-use miden_assembly::{Assembler, Library};
+use miden_assembly::{ast::{Module, ModuleKind}, Assembler, DefaultSourceManager, Library, LibraryPath};
 use rand::{rngs::StdRng, RngCore};
 use std::{fs, path::Path, sync::Arc};
 use tokio::time::{sleep, Duration};
@@ -21,12 +21,27 @@ pub fn create_tx_script(
 
     let assembler = match library {
         Some(lib) => assembler.with_library(lib),
-        None => Ok(assembler.with_debug_mode(true)),
+        None => Ok(assembler.with_debug_mode(false)),
     }
     .unwrap();
     let tx_script = TransactionScript::compile(script_code, [], assembler).unwrap();
 
     Ok(tx_script)
+}
+
+fn create_library(
+    assembler: Assembler,
+    library_path: &str,
+    source_code: &str,
+) -> Result<miden_assembly::Library, Box<dyn std::error::Error>> {
+    let source_manager = Arc::new(DefaultSourceManager::default());
+    let module = Module::parser(ModuleKind::Library).parse_str(
+        LibraryPath::new(library_path)?,
+        source_code,
+        &source_manager,
+    )?;
+    let library = assembler.clone().assemble_library([module])?;
+    Ok(library)
 }
 
 // Helper to create a basic account
@@ -114,7 +129,7 @@ async fn main() -> Result<(), ClientError> {
     let mut client = ClientBuilder::new()
         .with_rpc(rpc_api)
         .with_filesystem_keystore("./keystore")
-        .in_debug_mode(true)
+        .in_debug_mode(false)
         .build()
         .await?;
 
@@ -130,29 +145,12 @@ async fn main() -> Result<(), ClientError> {
 
     let amm_path = Path::new("./masm/amm-account.masm");
     let amm_code = fs::read_to_string(amm_path).unwrap();
-    let assembler: Assembler = TransactionKernel::assembler().with_debug_mode(true);
+    let assembler: Assembler = TransactionKernel::assembler().with_debug_mode(false);
 
     let amm_component = AccountComponent::compile(
         amm_code.clone(),
         assembler,
-        vec![StorageSlot::Value([
-            Felt::new(0),
-            Felt::new(0),
-            Felt::new(0),
-            Felt::new(0),
-        ]),
-        StorageSlot::Value([
-            Felt::new(0),
-            Felt::new(0),
-            Felt::new(0),
-            Felt::new(0),
-        ]),
-        StorageSlot::Value([
-            Felt::new(0),
-            Felt::new(0),
-            Felt::new(0),
-            Felt::new(0),
-        ])],
+        vec![],
     )
     .unwrap()
     .with_supports_all_types();
@@ -166,6 +164,7 @@ async fn main() -> Result<(), ClientError> {
         .account_type(AccountType::RegularAccountImmutableCode)
         .storage_mode(AccountStorageMode::Private)
         .with_component(amm_component.clone())
+        .with_component(RpoFalcon512::new(SecretKey::with_rng(client.rng()).public_key()))
         .build()
         .unwrap();
 
@@ -185,11 +184,12 @@ async fn main() -> Result<(), ClientError> {
         .unwrap();
 
     println!("\nDeploying first fungible faucet.");
-    let faucet1 = create_basic_faucet(&mut client, keystore.clone()).await?;
+    let faucet1: Account = create_basic_faucet(&mut client, keystore.clone()).await?;
+    println!("alice account storage {:?}", alice_account.storage());
     println!("Faucet account ID: {:?}", faucet1.id().to_bech32(NetworkId::Testnet));
     client.sync_state().await?;
 
-    println!("\nDeploying secind fungible faucet.");
+    println!("\nDeploying second fungible faucet.");
     let faucet2 = create_basic_faucet(&mut client, keystore).await?;
     println!("Faucet account ID: {:?}", faucet2.id().to_bech32(NetworkId::Testnet));
     client.sync_state().await?;
@@ -262,11 +262,19 @@ async fn main() -> Result<(), ClientError> {
     client.submit_transaction(tx_exec).await?;
     client.sync_state().await?;
 
-    println!("\n[STEP 3] Create custom note");
+    println!("\n[STEP 3] Create add liquidity note");
     let assembler = TransactionKernel::assembler().with_debug_mode(true);
+
+    let account_component_lib = create_library(
+        assembler.clone(),
+        "external_contract::amm_account",
+        &amm_code,
+    )
+    .unwrap();
+
     let code = fs::read_to_string(Path::new("./masm/liquidity.masm")).unwrap();
     let serial_num = client.rng().draw_word();
-    let note_script = NoteScript::compile(code, assembler).unwrap();
+    let note_script = NoteScript::compile(code, assembler.with_library(account_component_lib).unwrap()).unwrap();
     let note_inputs = NoteInputs::new(vec![]).unwrap();
     let recipient = NoteRecipient::new(serial_num, note_script, note_inputs);
     let tag = NoteTag::for_local_use_case(0, 0).unwrap();
@@ -296,6 +304,8 @@ async fn main() -> Result<(), ClientError> {
     let _ = client.submit_transaction(tx_result).await;
     client.sync_state().await?;
 
+
+    println!("\n[STEP 3] Accept liquidity note - private AMM");
     let script_code = fs::read_to_string(Path::new("./masm/nop_script.masm")).unwrap();
     let tx_script = create_tx_script(script_code, None).unwrap();
 

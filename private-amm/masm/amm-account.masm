@@ -22,3 +22,16 @@ export.get_balance
     # => []
 
 end
+
+export.receive_asset
+    exec.account::add_asset
+    # => [ASSET', pad(12)]
+
+    # drop the final asset
+    dropw
+    # => [pad(16)]
+end
+
+export.incr_nonce
+    exec.account::incr_nonce
+end
