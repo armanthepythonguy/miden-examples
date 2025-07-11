@@ -1,16 +1,33 @@
-use miden_assembly::Assembler;
+use miden_assembly::{Assembler, Library};
 use rand::{rngs::StdRng, RngCore};
 use std::{fs, path::Path, sync::Arc};
 use tokio::time::{sleep, Duration};
+use serde::de::value::Error;
 
 use miden_client::{
     account::{
         component::{BasicFungibleFaucet, BasicWallet, RpoFalcon512}, Account, AccountBuilder, AccountId, AccountStorageMode, AccountType, StorageSlot
     }, asset::{FungibleAsset, TokenSymbol}, auth::AuthSecretKey, builder::ClientBuilder, crypto::{FeltRng, SecretKey}, keystore::FilesystemKeyStore, note::{
         Note, NoteAssets, NoteExecutionHint, NoteExecutionMode, NoteInputs, NoteMetadata, NoteRecipient, NoteRelevance, NoteScript, NoteTag, NoteType
-    }, rpc::{Endpoint, TonicRpcClient}, store::InputNoteRecord, transaction::{OutputNote, TransactionKernel, TransactionRequestBuilder}, Client, ClientError, Felt, Word
+    }, rpc::{Endpoint, TonicRpcClient}, store::InputNoteRecord, transaction::{OutputNote, TransactionKernel, TransactionRequestBuilder, TransactionScript}, Client, ClientError, Felt, Word
 };
 use miden_objects::{account::{AccountComponent, NetworkId}, Hasher};
+
+pub fn create_tx_script(
+    script_code: String,
+    library: Option<Library>,
+) -> Result<TransactionScript, Error> {
+    let assembler = TransactionKernel::assembler();
+
+    let assembler = match library {
+        Some(lib) => assembler.with_library(lib),
+        None => Ok(assembler.with_debug_mode(true)),
+    }
+    .unwrap();
+    let tx_script = TransactionScript::compile(script_code, [], assembler).unwrap();
+
+    Ok(tx_script)
+}
 
 // Helper to create a basic account
 async fn create_basic_account(
@@ -279,8 +296,12 @@ async fn main() -> Result<(), ClientError> {
     let _ = client.submit_transaction(tx_result).await;
     client.sync_state().await?;
 
+    let script_code = fs::read_to_string(Path::new("./masm/nop_script.masm")).unwrap();
+    let tx_script = create_tx_script(script_code, None).unwrap();
+
     let consume_custom_request = TransactionRequestBuilder::new()
         .with_unauthenticated_input_notes([(custom_note, None)])
+        .with_custom_script(tx_script)
         .build()
         .unwrap();
     let tx_result = client
